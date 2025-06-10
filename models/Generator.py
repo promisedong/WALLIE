@@ -14,6 +14,7 @@ from Bottleneck import PConv
 # TODO? 频域模块
 from Neck import ffc, FreBlock
 
+from kornia.color import rgb_to_lab
 warnings.filterwarnings('ignore')
 
 
@@ -79,34 +80,12 @@ class res_basic(nn.Module):
 class FeatureFusionModule(nn.Module):
     def __init__(self, in_chan1, in_chan2, out_chan, *args, **kwargs):
         super(FeatureFusionModule, self).__init__()
-        self.convblk = res_basic(in_chan1 + in_chan2, out_chan, 3, stride = 1)
-        self.conv1 = nn.Conv2d(out_chan,
-                               out_chan // 4,
-                               kernel_size = 1,
-                               stride = 1,
-                               padding = 0,
-                               bias = False)
-        self.conv2 = nn.Conv2d(out_chan // 4,
-                               out_chan,
-                               kernel_size = 1,
-                               stride = 1,
-                               padding = 0,
-                               bias = False)
-        self.relu = nn.ReLU(inplace = True)
-        self.sigmoid = nn.Sigmoid()
+       
 
     def forward(self, fsp, fcp):
         fcat = torch.cat([ fsp, fcp ], dim = 1)
-        feat = self.convblk(fcat)
-        atten = F.avg_pool2d(feat, feat.size()[ 2: ])
-        atten = self.conv1(atten)
-        atten = self.relu(atten)
-        atten = self.conv2(atten)
-
-        atten = self.sigmoid(atten)
-        feat_atten = torch.mul(feat, atten)
-        feat_out = feat_atten + feat
-        return feat_out
+       
+        return fcat
 
 
 class SEBlock(nn.Module):
@@ -188,35 +167,8 @@ class GradientLoss(nn.Module):
             return torch.nn.functional.conv2d(x, kernel, padding = 1)
 
 
-# TODO? 判别器
-class PatchDiscriminator(nn.Module):
-    def __init__(self, in_dim = 3, ndf = 64, n_layers = 3):
-        super(PatchDiscriminator, self).__init__()
-        self.train_iters = 0
-
-        # TODO? downsample
-        layers = [ nn.Conv2d(in_dim, ndf, kernel_size = 4, padding = 1, stride = 2),
-                   nn.LeakyReLU(0.2, inplace = True) ]
-
-        in_channels = ndf
-        out_channels = ndf * 2
-        for i in range(1, n_layers + 1):
-            stride = 2 if i < n_layers else 1
-            layers.append(nn.Conv2d(in_channels, out_channels, kernel_size = 4, padding = 1, stride = stride))
-            layers.append(nn.LeakyReLU(0.2, inplace = True))
-            layers.append(ResnetBlock22(out_channels, padding_type = 'reflect'))
-
-            in_channels = out_channels
-            out_channels = out_channels * (2 if i < 3 else 1)
-
-        layers.append(nn.Conv2d(out_channels, 1, kernel_size = 4, padding = 1, stride = 1))
-        self.layers = nn.Sequential(*layers)
-
-    def forward(self, x):
-        return self.layers(x)
 
 
-from kornia.color import rgb_to_lab
 
 
 def lab_loss(pred = None,
@@ -249,29 +201,7 @@ def cross_attention(q = None,
                     v = None,
                     h = None,
                     w = None):
-    b, d, c = q.shape
-
-    # -----------------------------------------------#
-    #   TODO? 单一维度容易显存占用过大
-    # -----------------------------------------------#
-    chunk = d // 8  # TODO? 拆分数量
-    assert chunk != 0, "operator error!!!"
-
-    feats = [ ]
-    for ind in range(0, d, chunk):
-        sta = ind
-        end = sta + chunk
-
-        attention = F.softmax((q[ :, sta:end, : ] @ k[ :, sta:end, : ].permute((0, 2, 1))) * (8 ** (-0.5)), dim = 1)
-
-        attention = attention @ v[ :, sta:end, : ]
-        feats.append(attention)
-
-    # h = int(d**0.5)
-
-    attention = torch.cat(feats, dim = 1)
-
-    # attention = attention.contiguous().view((b,h,w,c)).permute((0,3,1,2))
+   
 
     return attention
 
@@ -332,77 +262,11 @@ class Down(nn.Module):
                  out_planes = None):
         super(Down, self).__init__()
 
-        # +++++++++++++++++++++++++++++++++++++++++++#
-        #      TODO? 分解频率域
-        # +++++++++++++++++++++++++++++++++++++++++++#
-        self.dwt = DWTForward(J = 1, wave = 'haar')
-
-        # TODO?
-        self.conv1 = nn.Conv2d(in_channels = 2 * in_planes,
-                               out_channels = out_planes // 2, kernel_size = 1)
-
-        self.layer1 = nn.Sequential(
-            nn.Conv2d(in_channels = in_planes,
-                      out_channels = out_planes // 2,
-                      kernel_size = 4, padding = 1, stride = 2),
-
-            nn.ReLU(inplace = True)
-        )
-
-        self.ffn = FFN(out_planes // 2, out_planes // 2)
+      
 
     def forward(self, x):
-        dw = self.layer1(x)
-
-        yL, yH = self.dwt(x)
-
-        y_HL = yH[ 0 ][ :, :, 0, :: ]
-        y_LH = yH[ 0 ][ :, :, 1, :: ]
-
-        y_HH = yH[ 0 ][ :, :, 2, :: ]
-        #  print(y_HL.shape,y_HL.shape)
-
-        y = self.conv1(torch.cat((y_HL, y_LH), dim = 1))
-
-        # ------------------------------------------#
-        #   TODO? 转为
-        # ------------------------------------------#
-        b, c, h, w = y.shape
-
-        y = y.permute((0, 2, 3, 1)).contiguous().view((b, -1, c))
-        yL = yL.permute((0, 2, 3, 1)).contiguous().view((b, -1, c))
-        y_HH = y_HH.permute((0, 2, 3, 1)).contiguous().view((b, -1, c))
-        # dw = dw.permute((0,2,3,1)).contiguous().view((b,-1,c))
-        # print(yL.shape,y.shape,y_HH.shape)
-
-        # TODO? 1
-        attention = self.ffn(cross_attention(yL, y, y_HH, h, w))
-        attention = attention.contiguous().view((b, h, w, c)).permute((0, 3, 1, 2))
-        y = y.contiguous().view((b, h, w, c)).permute((0, 3, 1, 2))
-        # TODO? 2
-        # attention = cross_attention(dw,y,yL,h,w)
-
-        # TODO? 3
-        # attention = cross_attention(dw,y,yL,h,w)
-        # attention = self.ffn(attention)
-        # attention = attention.contiguous().view((b,h,w,c)).permute((0,3,1,2))
-
-        # TODO? 4
-        # attention = cross_attention(dw,y,y,h,w)
-        # attention = self.ffn(attention)
-        # attention = attention.contiguous().view((b,h,w,c)).permute((0,3,1,2))
-
-        # TODO? 5
-        # attention = cross_attention(dw,y,dw,h,w)
-        # attention = self.ffn(attention)
-        # attention = attention.contiguous().view((b,h,w,c)).permute((0,3,1,2))
-
-        down_2x = F.interpolate(x, size = attention.shape[ 2: ], mode = 'bilinear',
-                                align_corners = True)
-
-        attention = attention * (down_2x - dw)
-
-        return attention + y
+      
+        return x
 
 
 class DilateConv(nn.Module):
@@ -446,76 +310,11 @@ class MixFreFeature(nn.Module):
     def __init__(self, inplanes, outplanes):
         super().__init__()
 
-        # 可学习参数 (初始化接近中心区域)
-        self.h_radius_raw = nn.Parameter(torch.tensor(0.1))  # 高频保留范围
-        self.l_radius_raw = nn.Parameter(torch.tensor(0.3))  # 低频保留范围
-        self.alpha = nn.Parameter(torch.tensor(0.5))  # 高低频混合系数
-
-        # 动态融合权重
-        self.conv1 = nn.Sequential(
-            nn.Conv2d(inplanes, inplanes, 1),
-            nn.BatchNorm2d(inplanes),
-            nn.ReLU(inplace = True)
-        )
-
-        self.fin = nn.Conv2d(2 * inplanes, outplanes, 1)
-
-    def generate_gaussian_mask(self, x, radius, is_high_freq = True):
-        """
-        生成可微分高斯掩码
-        Args:
-            x: 输入特征图 (用于获取尺寸信息)
-            radius: 控制高斯衰减的半径 (浮点数)
-            is_high_freq: 是否为高频掩码
-        """
-        B, C, H, W = x.shape
-        device = x.device
-
-        # 生成距离矩阵 (归一化到[-1,1])
-        y_coord = torch.linspace(-1, 1, H, device = device).view(1, H, 1)
-        x_coord = torch.linspace(-1, 1, W, device = device).view(1, 1, W)
-        dist = torch.sqrt(y_coord ** 2 + x_coord ** 2)  # [1, H, W]
-
-        # 计算高斯衰减
-        sigma = torch.clamp(radius / H, 0.1, 1.0)
-        mask = torch.exp(-dist ** 2 / (2 * sigma ** 2 + 1e-6))
-
-        # 高频保留周围，低频保留中心
-        if is_high_freq:
-            mask = 1.0 - mask  # 反转掩码
-
-        return mask.unsqueeze(1)  # [1, 1, H, W]
-
-    def get_radius(self, x, radius):
-        return (torch.sigmoid(x) * radius)
-
+      
     def forward(self, x):
-        # 傅里叶变换
-        f = fft.rfft2(x, norm = 'backward')
+       
 
-        # 高频掩码（保留周围细节）
-        h_radius = self.get_radius(self.h_radius_raw, f.shape[ -1 ])
-        mask_high = self.generate_gaussian_mask(f, h_radius, True)
-
-        # 低频掩码（保留中心光照）
-        l_radius = self.get_radius(self.l_radius_raw, f.shape[ -1 ])
-        mask_low = self.generate_gaussian_mask(f, l_radius, False)
-
-        # 频域分离
-        f_high = f * mask_high
-
-        f_low = f * mask_low
-
-        # 逆变换回空间域
-        x_high = fft.irfft2(f_high, s = x.shape[ -2: ], norm = 'backward')
-        x_low = fft.irfft2(f_low, s = x.shape[ -2: ], norm = 'backward')
-
-        mixed = self.alpha.sigmoid() * x_high + (1. - self.alpha.sigmoid()) * x_low
-        mixed = self.conv1(mixed)
-
-        out = torch.cat((mixed, x), dim = 1)
-
-        return self.fin(out)
+        return x
 
 
 class GlobalGenerator(nn.Module):
@@ -802,9 +601,7 @@ class GlobalGenerator(nn.Module):
 
         # ---------------------------------------#
 
-        # --------------------------------------#
-        #   TODO? 图像重构
-        # --------------------------------------#
+     
         rec[ 'x_pred' ] = output
 
         if is_traing:
@@ -904,11 +701,6 @@ if __name__ == '__main__':
 
     # TODO? 参数配置
     print(opt)
-
-
-
-
-
 
 
     x = torch.randn((1, 128, 64, 64))
