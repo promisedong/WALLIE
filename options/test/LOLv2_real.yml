@@ -39,8 +39,10 @@ gpu_ids: [0]
 datasets:
   test:  # the 1st test dataset
     name: test
-    dataroot_GT: /root/data1/LOLDatasets/huawei/Eval/Huawei/high
-    dataroot_LQ: /root/data1/LOLDatasets/huawei/Eval/Huawei/low
+    # dataroot_GT: /root/data1/LOLDatasets/Real_captured/Test/ Normal
+    # dataroot_LQ: /root/data1/LOLDatasets/Real_captured/Test/L1
+    dataroot_GT: /root/data1/LOLDatasets/LOL-v2/Synthetic/Test/Normal
+    dataroot_LQ: /root/data1/LOLDatasets/LOL-v2/Synthetic/Test/Low
    # dataroot_FR: 
 
 #### network structures
@@ -56,7 +58,3 @@ path:
   pretrained: 0.pth
   pretrained_decoder: /root/data1/LOLdataset/DMFourLLIE-main/experiments/pretrained/models/29000_G.pth
   pretrain_model_G: /root/data1/WALLIE_huawei/experiments/pretrained_20250323/models/114000_G.pth
-
-
-
- 
