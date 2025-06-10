@@ -1,1 +1,68 @@
+#### general settings
+name: train
+use_tb_logger: false
+model: WAenhancement_model2
+distortion: sr
+scale: 1
+gpu_ids: [0]
 
+#### datasets
+datasets:
+  train:
+    name: ll_dataset
+    interval_list: [1]
+    random_reverse: false
+    border_mode: false
+    dataroot_GT: /root/data1/LOLDatasets/huawei/Training data/Huawei/high
+    dataroot_LQ: /root/data1/LOLDatasets/huawei/Training data/Huawei/low
+   
+    n_workers: 4  # per GPU
+    batch_size: 16
+
+    GT_size: 256   # size you want to crop out as input sample.
+    LQ_size: 512
+    use_flip: true
+    use_rot: true
+    color: RGB
+  val:
+    name: ll_dataset
+    dataroot_GT: /root/data1/LOLDatasets/huawei/Eval/Huawei/high
+    dataroot_LQ: /root/data1/LOLDatasets/huawei/Eval/Huawei/low
+  
+    train_size: [960, 720]
+
+#### network structures
+network_G:
+  which_model_G: generator
+  
+#### path
+path:
+  root: /root/data1/WALLIE_huawei/experiments/pretrained_20250323
+  strict_load: false
+  resume_state: /root/data1/WALLIE_huawei/experiments/pretrained_20250323/training_state/114000.state #resume 114000_G
+  pretrain_model_G: /root/data1/WALLIE_huawei/experiments/pretrained_20250323/models/114000_G.pth
+  log: /root/data1/WALLIE_huawei/experiments/pretrained_20250323
+
+#### training settings: learning rate scheme, loss
+train:
+  lr_G: 0.0004
+  lr_scheme: MultiStepLR
+  beta1: 0.9
+  beta2: 0.99
+  niter: 15000000     
+  
+  lr_steps: [40000, 80000, 140000]
+  ft_tsa_only: 0
+  warmup_iter: -1  # -1: no warm up
+  lr_gamma: 0.5
+  eta_min: !!float 1e-7
+  pixel_criterion: l1
+  pixel_weight: 1.0
+  val_freq: !!float 1e3
+  manual.resize960x512_seed: 0
+  vgg_loss: false
+
+#### logger
+logger:
+  print_freq: 100
+  save_checkpoint_freq: !!float 100
