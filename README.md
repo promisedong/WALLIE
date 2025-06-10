@@ -233,13 +233,33 @@ tensorboardX==2.6.2.2
 <div align="center">
   <img src="./figures/Figure_16.png" height="400" width="700">
 </div>
+
+
 #### Parameters (M) and FLOPs (G) of proposed modules under a fixed input resolution. (*PMGF* is part of the *S2WD* module and is not separately analyzed.)
 
 <div align="center">
   <img src="./figures/Table_10.png" height="300" width="650">
 </div>
+## **Limitation analysis**
 
+<p style="text-align: justify;"><strong>
+Although extensive comparative experiments, advanced vision tasks, and ablation
+studies have thoroughly demonstrated WALLIE’s superior performance in low-light
+enhancement, we acknowledge two potential limitations: (1) Local color distortion 
+in extreme low-light scenes: when input images suffer from severely degraded color 
+features in certain local regions, the perceptual interaction may fail. In such cases, 
+the model relies on training-set statistical features for global color calibration, which 
+can lead to local color distortions (see the first and second rows of Figure 17). (2) 
+Smoothing of high-frequency texture details: for structures requiring fine-grained reconstruction (e.g., wall tile textures), even though the S2WD module compensates via 
+multi-view local feature enhancement, the loss of original detail information in the input image can still result in overly smoothed reconstructed textures (see the third row
+of Figure 17).
+</strong>
+</p>
 
+<div align="center">
+  <img src="./figures/Figure_17.png" height="600" width="800">
+  <p><strong>Figure 17:</strong>Model limitation under extreme darkness. (The absence of local detail and color cues under extremely low-light conditions hinders the model’s ability to perform fine-grained enhancement.)</p>
+</div>
 
 ## Visualization
 
